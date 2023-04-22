@@ -27,8 +27,8 @@ func TestTokenization(t *testing.T) {
 			{ID: 22, Text: "▁to"},
 			{ID: 39, Text: "▁be"},
 			{ID: 22, Text: "▁to"},
-			{ID: 267, Text: "k"},
-			{ID: 0, Text: "é"},
+			{ID: 1235, Text: "ke"},
+			{ID: 0, Text: "́"},
 			{ID: 180, Text: "n"},
 			{ID: 1227, Text: "ized"},
 		}},
@@ -195,8 +195,8 @@ func TestTokenizationSPM(t *testing.T) {
 			{ID: 20, Text: "▁to"},
 			{ID: 44, Text: "▁be"},
 			{ID: 20, Text: "▁to"},
-			{ID: 197, Text: "k"},
-			{ID: 1, Text: "é"},
+			{ID: 1048, Text: "ke"},
+			{ID: 1, Text: "́"},
 			{ID: 103, Text: "n"},
 			{ID: 1333, Text: "ized"},
 		}},
@@ -337,6 +337,68 @@ func TestControlWords2(t *testing.T) {
 	if !ok || clsIndex != 2 {
 		t.Errorf("Control word [CLS] not correct")
 	}
+}
+
+func TestRunLengthchange(t *testing.T) {
+	testRunLengthchange(t, "Why would you make changes here? Did you want just model generated?")
+	testRunLengthchange(t, "İs th!s 𩸽 Ϻ Šœ Ugljšić dấu nặng")
+	testRunLengthchange(t, "昨日、友達と映画を見ました。")
+	testRunLengthchange(t, "compose email to john saying i will be running late to office today because i am not feeling well, my head is aching and in the body add shall we meet next week and when we go to the office lets reach by around 10 am and go for a movie in the evening, may be Spiderman which seems to be a very good movie which got 5 star review from rottentomatoes and imdb")
+	testRunLengthchange(t, "我想学习汉语，因为我觉得它很有用!")
+}
+
+func testRunLengthchange(t *testing.T, text string) {
+	originalLen := len([]rune(text))
+	text = normalize(text)
+
+	lenAfterNorm := len([]rune(text))
+	if originalLen != lenAfterNorm {
+		t.Errorf("text length %d changed after normalization: %d", originalLen, lenAfterNorm)
+	}
+	runes := torunes(text)
+	padding := len(runes) - originalLen
+	lenAfterPadding := len(runes)
+	if padding != 0 && padding != 1 {
+		t.Errorf("padding shoudl be 0 or 1")
+	}
+	replaceWhiteSpace(runes)
+	if len(runes) != lenAfterPadding {
+		t.Errorf("replacing white space shouldn't change length")
+	}
+}
+
+func TestTokenOffset(t *testing.T) {
+	spm, err := NewSentencepieceFromFile("test_data/spm1.model", false)
+	if err != nil {
+		t.Errorf("Unable to create sentencepiece: %v", err)
+	}
+	testTokenOffset(t, spm, "replacing white space shouldn't change length")
+	testTokenOffset(t, spm, "correct. I think if a token isn't in the dictionary, if uses the special token UNK which has some set value")
+	testTokenOffset(t, spm, "correct. 来週の金曜日に会いましょう。")
+	testTokenOffset(t, spm, "Whaaaaaaat is thaaa!t you can see????")
+	testTokenOffset(t, spm, "compose email to john saying i will be running late to office today because i am not feeling well, my head is aching and in the body add shall we meet next week and when we go to the office lets reach by around 10 am and go for a movie in the evening, may be Spiderman which seems to be a very good movie which got 5 star review from rottentomatoes and imdb")
+	testTokenOffset(t, spm, "我想学习汉语，因为我觉得它很有用!")
+}
+
+func testTokenOffset(t *testing.T, spm Sentencepiece, text string) {
+	tokenOffsets := spm.TokenizeToOffsets(text)
+	runes := spm.prepareFortokenize(text)
+	padding := false
+	if len(runes)-len([]rune(text)) == 1 {
+		runes = runes[1:]
+		padding = true
+	}
+	for i, offset := range tokenOffsets {
+		word := string(runes[offset.Start:offset.End])
+		if i == 0 && padding {
+			tempRunes := []rune(offset.Text)
+			offset.Text = string(tempRunes[1:])
+		}
+		if offset.Text != word {
+			t.Errorf("%d %s != %s", i, offset.Text, word)
+		}
+	}
+
 }
 
 func BenchmarkSentencePiece(b *testing.B) {
