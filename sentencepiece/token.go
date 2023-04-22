@@ -6,9 +6,9 @@ type Token struct {
 	Text string
 }
 
-type tokenOffset struct {
-	id    int32
-	text  string
-	start int
-	end   int
+type TokenOffset struct {
+	ID    int32
+	Text  string
+	Start int
+	End   int
 }

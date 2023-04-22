@@ -99,17 +99,9 @@ func (s *Sentencepiece) GetControlWord(word string) (int32, bool) {
 
 // Tokenize tokenizes text into pieces
 func (s *Sentencepiece) Tokenize(text string) []Token {
-	text = normalize(text)
-	if s.lowercase {
-		text = strings.ToLower(text)
-	}
-	runes := torunes(text)
-	replaceWhiteSpace(runes)
-	slices := s.decodeForwardToken(runes)
-	slices = s.decodeBackwards(slices)
-	offsets := s.sliceToTokens(slices)
-	tokens := makeTokens(offsets, runes)
-	return tokens
+	runes := s.prepareFortokenize(text)
+	tokenOffsets := s.tokenizeToOffsets(runes, false)
+	return makeTokens(tokenOffsets, runes)
 }
 
 // TokenizeToIDs tokenizes text into ids from the vocab
@@ -122,6 +114,27 @@ func (s *Sentencepiece) TokenizeToIDs(text string) []int32 {
 	return ids
 }
 
+func (s *Sentencepiece) TokenizeToOffsets(text string) []TokenOffset {
+	runes := s.prepareFortokenize(text)
+	padding := len(runes) - len([]rune(text))
+	return s.tokenizeToOffsets(runes, padding > 0)
+}
+
+func (s *Sentencepiece) tokenizeToOffsets(runes []rune, adjustFirstPadding bool) []TokenOffset {
+	slices := s.decodeForwardToken(runes)
+	slices = s.decodeBackwards(slices)
+	return s.sliceToTokens(slices, runes, adjustFirstPadding)
+}
+
+func (s *Sentencepiece) prepareFortokenize(text string) []rune {
+	text = normalize(text)
+	if s.lowercase {
+		text = strings.ToLower(text)
+	}
+	runes := torunes(text)
+	replaceWhiteSpace(runes)
+	return runes
+}
 func (s *Sentencepiece) insert(word string, score float32, index int32) {
 	_, size := utf8.DecodeLastRuneInString(word)
 	charCount := len(word)
@@ -198,15 +211,21 @@ func (s *Sentencepiece) decodeForwardToken(runes []rune) []slice {
 	return slices
 }
 
-func (s *Sentencepiece) sliceToTokens(slices []slice) []tokenOffset {
-	tokens := make([]tokenOffset, 0, len(slices)+1)
+func (s *Sentencepiece) sliceToTokens(slices []slice, runes []rune, adjustFirstPadding bool) []TokenOffset {
+	tokens := make([]TokenOffset, 0, len(slices)+1)
 	isPrevUnknown := false
 	for _, slice := range slices {
-		if isPrevUnknown && slice.index == s.unknown {
-			prevToken := tokens[len(tokens)-1]
-			prevToken.end = slice.end
-		} else {
-			tokens = append(tokens, tokenOffset{id: slice.index, start: slice.start, end: slice.end})
+		if !isPrevUnknown || slice.index != s.unknown {
+			word := string(runes[slice.start:slice.end])
+			start := slice.start
+			end := slice.end
+			if adjustFirstPadding {
+				if start > 0 {
+					start -= 1
+				}
+				end--
+			}
+			tokens = append(tokens, TokenOffset{ID: slice.index, Text: word, Start: start, End: end})
 		}
 		isPrevUnknown = slice.index == s.unknown
 	}
@@ -263,10 +282,10 @@ func torunes(text string) []rune {
 	return runes
 }
 
-func makeTokens(offsets []tokenOffset, runes []rune) []Token {
+func makeTokens(offsets []TokenOffset, runes []rune) []Token {
 	tokens := make([]Token, len(offsets))
 	for i, offset := range offsets {
-		tokens[i] = Token{ID: offset.id, Text: string(runes[offset.start:offset.end])}
+		tokens[i] = Token{ID: offset.ID, Text: offset.Text}
 	}
 	return tokens
 }

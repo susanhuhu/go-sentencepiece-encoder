@@ -1,4 +1,4 @@
-module github.com/vikesh-raj/go-sentencepiece-encoder
+module github.com/susanhuhu/go-sentencepiece-encoder
 
 go 1.15
 

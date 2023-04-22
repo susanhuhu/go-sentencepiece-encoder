@@ -3,25 +3,19 @@ package sentencepiece
 import (
 	"strings"
 	"unicode"
-
-	"golang.org/x/text/unicode/norm"
 )
-
-func sanitize(s string) string {
-	return norm.NFKC.String(s)
-}
 
 func normalize(s string) string {
 	replacer := func(r rune) rune {
 		if isControl(r) || r == 0 {
-			return -1
+			return ' '
 		}
 		if unicode.IsSpace(r) {
 			return ' '
 		}
 		return r
 	}
-	return sanitize(strings.Map(replacer, s))
+	return strings.Map(replacer, s)
 }
 
 var controlChars []rune = []rune{
