@@ -349,23 +349,12 @@ func TestRunLengthchange(t *testing.T) {
 
 func testRunLengthchange(t *testing.T, text string) {
 	originalLen := len([]rune(text))
-	text = normalize(text)
-
-	lenAfterNorm := len([]rune(text))
-	if originalLen != lenAfterNorm {
-		t.Errorf("text length %d changed after normalization: %d", originalLen, lenAfterNorm)
-	}
-	runes := torunes(text)
-	padding := len(runes) - originalLen
-	lenAfterPadding := len(runes)
+	sp := NewEmptySentencepiece(true)
+	runes := sp.prepareFortokenize(text)
+	padding := len(runes) - originalLen	
 	if padding != 0 && padding != 1 {
 		t.Errorf("padding shoudl be 0 or 1")
-	}
-	replaceWhiteSpace(runes)
-	if len(runes) != lenAfterPadding {
-		t.Errorf("replacing white space shouldn't change length")
-	}
-}
+	}}
 
 func TestTokenOffset(t *testing.T) {
 	spm, err := NewSentencepieceFromFile("test_data/spm1.model", false)
