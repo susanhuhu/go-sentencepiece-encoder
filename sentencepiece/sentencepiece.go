@@ -3,7 +3,6 @@ package sentencepiece
 import (
 	"fmt"
 	"math"
-	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -17,25 +16,6 @@ type slice struct {
 	index int32
 	start int
 	end   int
-}
-
-func findOffset(position int, q string) int {
-	count := 0
-	for i := range q {
-		if count == position {
-			return i
-		}
-	}
-	return -1
-}
-
-func text(s slice, q string) string {
-	startOffset := findOffset(s.start, q)
-	endOffset := findOffset(s.end, q)
-	if startOffset == -1 || endOffset == -1 {
-		return ""
-	}
-	return q[startOffset:endOffset]
 }
 
 type trieNode struct {
@@ -127,14 +107,27 @@ func (s *Sentencepiece) tokenizeToOffsets(runes []rune, adjustFirstPadding bool)
 }
 
 func (s *Sentencepiece) prepareFortokenize(text string) []rune {
-	text = normalize(text)
-	if s.lowercase {
-		text = strings.ToLower(text)
+	runes := make([]rune, 0, len(text)+1)
+	first, _ := utf8.DecodeRuneInString(text)
+	if first != sep {
+		runes = append(runes, sep)
 	}
-	runes := torunes(text)
-	replaceWhiteSpace(runes)
+
+	for _, r := range text {
+		if isControl(r) || r == 0 {
+			runes = append(runes, ' ')
+		} else if unicode.IsSpace(r) {
+			runes = append(runes, sep)
+		} else if s.lowercase {
+			runes = append(runes, unicode.ToLower(r))
+		} else {
+			runes = append(runes, r)
+		}
+	}
+
 	return runes
 }
+
 func (s *Sentencepiece) insert(word string, score float32, index int32) {
 	_, size := utf8.DecodeLastRuneInString(word)
 	charCount := len(word)
@@ -157,7 +150,7 @@ func (s *Sentencepiece) insert(word string, score float32, index int32) {
 }
 
 func (s *Sentencepiece) commonPrefixSearch(runes []rune) []trieNode {
-	output := make([]trieNode, 0, len(runes))
+	var output []trieNode
 	node := &s.root
 	for _, r := range runes {
 		cnode, ok := node.children[r]
@@ -251,39 +244,6 @@ func (s *Sentencepiece) initSlices(len int) []slice {
 	return slices
 }
 
-func replaceWhiteSpace(runes []rune) {
-	for i, r := range runes {
-		if unicode.IsSpace(r) {
-			runes[i] = sep
-		}
-	}
-}
-
-func replaceSeperator(s string) string {
-	replacer := func(r rune) rune {
-		if r == sep {
-			return ' '
-		}
-		return r
-	}
-	return strings.Map(replacer, s)
-}
-
-func torunes(text string) []rune {
-	runes := make([]rune, 0, len(text)+1)
-
-	first, _ := utf8.DecodeRuneInString(text)
-	if first != sep {
-		runes = append(runes, sep)
-	}
-
-	for _, r := range text {
-		runes = append(runes, r)
-	}
-
-	return runes
-}
-
 func makeTokens(offsets []TokenOffset, runes []rune) []Token {
 	tokens := make([]Token, len(offsets))
 	for i, offset := range offsets {
@@ -294,4 +254,40 @@ func makeTokens(offsets []TokenOffset, runes []rune) []Token {
 
 func addChar(s string, r rune) string {
 	return fmt.Sprintf("%s%c", s, r)
+}
+
+func isControl(c rune) bool {
+	if c == ' ' || c == '\n' || c == '\r' || c == '\t' {
+		return false
+	}
+	if c <= 0x001F || (c >= 0x0080 && c <= 0x009F) ||
+		(c >= 0xE0020 && c <= 0xE007F) ||
+		(c >= 0xE000 && c <= 0xF8FF) ||
+		(c >= 0xF0000 && c <= 0xFFFFD) ||
+		(c >= 0x100000 && c <= 0x10FFFD) ||
+		(c >= 0xD800 && c <= 0xDB7F) ||
+		(c >= 0xDB80 && c <= 0xDBFF) ||
+		(c >= 0xDC00 && c <= 0xDFFF) ||
+		isControlChar(c) {
+		return true
+	}
+	return false
+}
+
+func isControlChar(c rune) bool {
+	controlChars := []rune{
+		0x007F, 0x00AD, 0x0600, 0x0601, 0x0602, 0x0603, 0x0604, 0x0605, 0x061C, 0x06DD, 0x070F,
+		0x08E2, 0x180E, 0x200B, 0x200C, 0x200D, 0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D,
+		0x202E, 0x2060, 0x2061, 0x2062, 0x2063, 0x2064, 0x2066, 0x2067, 0x2068, 0x2069, 0x206A,
+		0x206B, 0x206C, 0x206D, 0x206E, 0x206F, 0xFEFF, 0xFFF9, 0xFFFA, 0xFFFB, 0x110BD,
+		0x110CD, 0x13430, 0x13431, 0x13432, 0x13433, 0x13434, 0x13435, 0x13436, 0x13437,
+		0x13438, 0x1BCA0, 0x1BCA1, 0x1BCA2, 0x1BCA3, 0x1D173, 0x1D174, 0x1D175, 0x1D176,
+		0x1D177, 0x1D178, 0x1D179, 0x1D17A, 0xE0001,
+	}
+	for _, ch := range controlChars {
+		if ch == c {
+			return true
+		}
+	}
+	return false
 }
